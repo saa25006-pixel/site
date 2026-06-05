@@ -1,11 +1,423 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>和風パズル - 落ち葉重ね -</title>
+    <style>
+        /* 全体の和風デザイン設定 */
+        body {
+            background-color: #2b2b2b; /* 暗めの背景で厳かな雰囲気に */
+            background-image: radial-gradient(#3a3a3a 1px, transparent 0);
+            background-size: 24px 24px;
+            color: #f2e8d5; /* 鳥の子色（優しい白） */
+            font-family: 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 2rem;
+            letter-spacing: 0.3rem;
+            color: #d9333f; /* 真紅 */
+            text-shadow: 2px 2px 0px #1a1a1a;
+            margin-bottom: 10px;
+        }
+
+        .game-container {
+            display: flex;
+            gap: 20px;
+            background-color: #1e1e1e;
+            padding: 20px;
+            border: 4px double #b8860b; /* 漆器の金縁をイメージ */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            border-radius: 4px;
+        }
+
+        /* 障子風のプレイエリア */
+        #stage {
+            background-color: #faf6ee; /* 生成り色の障子紙 */
+            border: 3px solid #3d2f21; /* 木枠 */
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.15);
+        }
+
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 140px;
+        }
+
+        .info-box {
+            background-color: #2d241e; /* 黒大栗色 */
+            border: 2px solid #5c4632;
+            padding: 10px;
+            text-align: center;
+            border-radius: 4px;
+        }
+
+        .info-title {
+            font-size: 0.9rem;
+            color: #c49a45; /* 金茶 */
+            margin-bottom: 5px;
+            border-bottom: 1px dotted #c49a45;
+            padding-bottom: 3px;
+        }
+
+        #next-stage {
+            background-color: #faf6ee;
+            border: 2px solid #3d2f21;
+            margin: 5px auto;
+            display: block;
+        }
+
+        .score-val {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #f2e8d5;
+        }
+
+        /* 和風の雅なボタン */
+        .btn {
+            background-color: #d9333f; /* 真紅 */
+            color: #faf6ee;
+            border: none;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 #8a1f26;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+
+        .btn:hover {
+            background-color: #e6414c;
+        }
+
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+        .controls-guide {
+            margin-top: 15px;
+            font-size: 0.75rem;
+            color: #a69e90;
+            line-height: 1.6;
+            text-align: left;
+        }
+    </style>
 </head>
 <body>
-    
+
+    <h1>落ち葉重ね</h1>
+
+    <div class="game-container">
+        <canvas id="stage" width="240" height="480"></canvas>
+
+        <div class="side-panel">
+            <div class="info-box">
+                <div class="info-title">次の一手</div>
+                <canvas id="next-stage" width="80" height="80"></canvas>
+            </div>
+
+            <div class="info-box">
+                <div class="info-title">得点</div>
+                <div id="score" class="score-val">0</div>
+            </div>
+
+            <button id="start-btn" class="btn">対局開始</button>
+
+            <div class="controls-guide">
+                【操作方法】<br>
+                ・矢印キー 左右：移動<br>
+                ・矢印キー 下：軟落下<br>
+                ・矢印キー 上：右回転<br>
+                ・スペース：即落下
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 日本の伝統色をブロックに採用
+        const TRADITIONAL_COLORS = [
+            null,
+            '#d9333f', // 1: 真紅 (Shinshu) - I
+            '#2b4c7e', // 2: 紺青 (Konjo) - O
+            '#a16d9b', // 3: 菖蒲色 (Ayameiro) - T
+            '#47885e', // 4: 鶯色 (Uguisuiro) - S
+            '#c49a45', // 5: 金茶 (Kinchas) - Z
+            '#d77c22', // 6: 琥珀色 (Kohakuiro) - J
+            '#595048'  // 7: 煤竹色 (Susutakeiro) - L
+        ];
+
+        const ROW = 20;
+        const COL = 10;
+        const BLOCK_SIZE = 24;
+
+        const canvas = document.getElementById('stage');
+        const ctx = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('next-stage');
+        const nextCtx = nextCanvas.getContext('2d');
+
+        let board = [];
+        let score = 0;
+        let gameOver = false;
+        let gameInterval = null;
+        let currentPiece = null;
+        let nextPiece = null;
+
+        // テトリミノの形状定義
+        const PIECES = [
+            [],
+            [[1,1,1,1]], // I
+            [[2,2],[2,2]], // O
+            [[0,3,0],[3,3,3],[0,0,0]], // T
+            [[0,4,4],[4,4,0],[0,0,0]], // S
+            [[5,5,0],[0,5,5],[0,0,0]], // Z
+            [[6,0,0],[6,6,6],[0,0,0]], // J
+            [[0,0,7],[7,7,7],[0,0,0]]  // L
+        ];
+
+        // 初期化処理
+        function init() {
+            board = Array.from({ length: ROW }, () => Array(COL).fill(0));
+            score = 0;
+            document.getElementById('score').innerText = score;
+            gameOver = false;
+            nextPiece = getRandomPiece();
+            spawnPiece();
+        }
+
+        function getRandomPiece() {
+            const id = Math.floor(Math.random() * 7) + 1;
+            return {
+                id: id,
+                matrix: JSON.parse(JSON.stringify(PIECES[id])),
+                x: Math.floor((COL - PIECES[id][0].length) / 2),
+                y: 0
+            };
+        }
+
+        function spawnPiece() {
+            currentPiece = nextPiece;
+            nextPiece = getRandomPiece();
+            drawNext();
+
+            // 出現位置で既に衝突している場合はゲームオーバー
+            if (checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y)) {
+                gameOver = true;
+                clearInterval(gameInterval);
+                drawStage();
+                // 終了時の文字入れ
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#d9333f';
+                ctx.font = "bold 24px 'Yu Mincho'";
+                ctx.textAlign = 'center';
+                ctx.fillText('終局 (GAME OVER)', canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        // 衝突判定
+        function checkCollision(matrix, px, py) {
+            for (let r = 0; r < matrix.length; r++) {
+                for (let c = 0; c < matrix[r].length; c++) {
+                    if (matrix[r][c] !== 0) {
+                        let nextX = px + c;
+                        let nextY = py + r;
+                        if (nextX < 0 || nextX >= COL || nextY >= ROW) return true;
+                        if (nextY >= 0 && board[nextY][nextX] !== 0) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // 固定処理とライン消去
+        function lockPiece() {
+            const m = currentPiece.matrix;
+            for (let r = 0; r < m.length; r++) {
+                for (let c = 0; c < m[r].length; c++) {
+                    if (m[r][c] !== 0) {
+                        if (currentPiece.y + r >= 0) {
+                            board[currentPiece.y + r][currentPiece.x + c] = currentPiece.id;
+                        }
+                    }
+                }
+            }
+            clearLines();
+            spawnPiece();
+        }
+
+        function clearLines() {
+            let linesCleared = 0;
+            for (let r = ROW - 1; r >= 0; r--) {
+                if (board[r].every(val => val !== 0)) {
+                    board.splice(r, 1);
+                    board.unshift(Array(COL).fill(0));
+                    linesCleared++;
+                    r++; // 行が詰まるためインデックスを維持
+                }
+            }
+            if (linesCleared > 0) {
+                // 和風の粋な得点配分（まとめて消すと高得点）
+                score += [0, 100, 300, 600, 1200][linesCleared];
+                document.getElementById('score').innerText = score;
+            }
+        }
+
+        // 移動・回転
+        function move(dir) {
+            if (!checkCollision(currentPiece.matrix, currentPiece.x + dir, currentPiece.y)) {
+                currentPiece.x += dir;
+                drawStage();
+            }
+        }
+
+        function drop() {
+            if (!checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y + 1)) {
+                currentPiece.y++;
+            } else {
+                lockPiece();
+            }
+            drawStage();
+        }
+
+        function hardDrop() {
+            while (!checkCollision(currentPiece.matrix, currentPiece.x, currentPiece.y + 1)) {
+                currentPiece.y++;
+            }
+            lockPiece();
+            drawStage();
+        }
+
+        function rotate() {
+            const m = currentPiece.matrix;
+            const N = m.length;
+            // 行列の転置と反転による右回転
+            const rotated = Array.from({ length: N }, () => Array(N).fill(0));
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    rotated[c][N - 1 - r] = m[r][c];
+                }
+            }
+            // 壁蹴り（簡易版：回転して衝突したら左右に逃げる）
+            let originalX = currentPiece.x;
+            if (!checkCollision(rotated, currentPiece.x, currentPiece.y)) {
+                currentPiece.matrix = rotated;
+            } else if (!checkCollision(rotated, currentPiece.x - 1, currentPiece.y)) {
+                currentPiece.x -= 1;
+                currentPiece.matrix = rotated;
+            } else if (!checkCollision(rotated, currentPiece.x + 1, currentPiece.y)) {
+                currentPiece.x += 1;
+                currentPiece.matrix = rotated;
+            }
+            drawStage();
+        }
+
+        // 描画ロジック
+        function drawBlock(context, x, y, id, size) {
+            context.fillStyle = TRADITIONAL_COLORS[id];
+            context.fillRect(x * size, y * size, size, size);
+            
+            // 和風の意匠（家紋や格子を意識した内枠の線）
+            context.strokeStyle = 'rgba(255,255,255,0.25)';
+            context.lineWidth = 1;
+            context.strokeRect(x * size + 2, y * size + 2, size - 4, size - 4);
+            
+            context.strokeStyle = 'rgba(0,0,0,0.15)';
+            context.strokeRect(x * size, y * size, size, size);
+        }
+
+        function drawStage() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 障子の格子線の背景描画
+            ctx.strokeStyle = 'rgba(61, 47, 33, 0.08)'; // 薄い木枠線
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= COL; i++) {
+                ctx.beginPath(); ctx.moveTo(i * BLOCK_SIZE, 0); ctx.lineTo(i * BLOCK_SIZE, canvas.height); ctx.stroke();
+            }
+            for (let j = 0; j <= ROW; j++) {
+                ctx.beginPath(); ctx.moveTo(0, j * BLOCK_SIZE); ctx.lineTo(canvas.width, j * BLOCK_SIZE); ctx.stroke();
+            }
+
+            // 積み上がったブロックの描画
+            for (let r = 0; r < ROW; r++) {
+                for (let c = 0; c < COL; c++) {
+                    if (board[r][c] !== 0) {
+                        drawBlock(ctx, c, r, board[r][c], BLOCK_SIZE);
+                    }
+                }
+            }
+
+            // 操作中のブロックの描画
+            if (currentPiece && !gameOver) {
+                const m = currentPiece.matrix;
+                for (let r = 0; r < m.length; r++) {
+                    for (let c = 0; c < m[r].length; c++) {
+                        if (m[r][c] !== 0) {
+                            drawBlock(ctx, currentPiece.x + c, currentPiece.y + r, currentPiece.id, BLOCK_SIZE);
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawNext() {
+            nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+            // 背景を生成り色に
+            nextCtx.fillStyle = '#faf6ee';
+            nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+
+            const m = nextPiece.matrix;
+            const size = 16; // 次の手は少し小さめに描画
+            const offsetX = (nextCanvas.width - m[0].length * size) / 2;
+            const offsetY = (nextCanvas.height - m.length * size) / 2;
+
+            for (let r = 0; r < m.length; r++) {
+                for (let c = 0; c < m[r].length; c++) {
+                    if (m[r][c] !== 0) {
+                        nextCtx.fillStyle = TRADITIONAL_COLORS[nextPiece.id];
+                        nextCtx.fillRect(offsetX + c * size, offsetY + r * size, size, size);
+                        nextCtx.strokeStyle = 'rgba(255,255,255,0.25)';
+                        nextCtx.strokeRect(offsetX + c * size + 1, offsetY + r * size + 1, size - 2, size - 2);
+                    }
+                }
+            }
+        }
+
+        // 鍵盤（キーボード）の受付
+        window.addEventListener('keydown', e => {
+            if (gameOver || !currentPiece) return;
+            switch(e.key) {
+                case 'ArrowLeft': move(-1); break;
+                case 'ArrowRight': move(1); break;
+                case 'ArrowDown': drop(); break;
+                case 'ArrowUp': rotate(); break;
+                case ' ': e.preventDefault(); hardDrop(); break;
+            }
+        });
+
+        // ボタンの挙動
+        document.getElementById('start-btn').addEventListener('click', function() {
+            clearInterval(gameInterval);
+            init();
+            gameInterval = setInterval(drop, 800); // 落下速度
+            this.innerText = '一からやり直す';
+            canvas.focus();
+        });
+
+        // 初回描画（背景の障子紙だけ表示）
+        drawStage();
+    </script>
 </body>
 </html>
