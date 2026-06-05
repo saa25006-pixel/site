@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>愛媛県立西条農業高等学校</title>
     <style>
-        /* 全体のリセットと共通スタイル */
+
         * {
             margin: 0;
             padding: 0;
